@@ -1,0 +1,13 @@
+{
+  "name": "@warswarm/client",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json && vite build"
+  },
+  "dependencies": {
+    "colyseus.js": "^0.16.10",
+    "phaser": "^3.90.0"
+  }
+}

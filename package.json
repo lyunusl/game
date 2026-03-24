@@ -1,0 +1,23 @@
+{
+  "name": "war-swarm",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm run dev -w @warswarm/server\" \"npm run dev -w @warswarm/client\"",
+    "build": "npm run build -w @warswarm/shared && npm run build -w @warswarm/server && npm run build -w @warswarm/client",
+    "test": "npm run test -w @warswarm/shared",
+    "host": "npm run build && npm run start -w @warswarm/server",
+    "host:internet": "concurrently -k -n host,tunnel -c blue,magenta \"npm run host\" \"ngrok http 2567 --log stdout\""
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.6.0",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.7"
+  }
+}
