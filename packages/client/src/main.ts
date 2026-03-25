@@ -4,6 +4,16 @@ import { Client as ColyseusClient, type Room } from "colyseus.js";
 import Phaser from "phaser";
 
 import {
+  SPRITE_ASSET_URLS,
+  VEHICLE_TEXTURE_KEYS,
+  WEAPON_TEXTURE_KEYS,
+  getTextureBaseAngle,
+  getTextureFallback,
+  getTextureScaleMultiplier,
+  type SpriteTextureKey
+} from "./assetManifest";
+
+import {
   CLASS_IDS_BY_PATH,
   DASH_COOLDOWN_MS,
   MAP_HEIGHT,
@@ -26,8 +36,7 @@ import {
   type TeamId,
   type UpgradeChoice,
   type VehicleTypeId,
-  type WeaponClassId,
-  type WeaponRenderKind
+  type WeaponClassId
 } from "../../shared/src";
 
 type SnapshotPlayer = {
@@ -205,81 +214,6 @@ type MatchSnapshot = {
   frontlineShift: number;
 };
 
-const SPRITE_ASSET_URLS = {
-  "soldier-base": "/assets/characters/soldier-base.svg",
-  "soldier-shadow": "/assets/characters/soldier-shadow.svg",
-  "weapon-blade": "/assets/characters/weapon-blade.svg",
-  "weapon-blunt": "/assets/characters/weapon-blunt.svg",
-  "weapon-chain": "/assets/characters/weapon-chain.svg",
-  "weapon-pistol": "/assets/characters/weapon-pistol.svg",
-  "weapon-rifle": "/assets/characters/weapon-rifle.svg",
-  "weapon-shotgun": "/assets/characters/weapon-shotgun.svg",
-  "weapon-smg": "/assets/characters/weapon-smg.svg",
-  "weapon-heavy": "/assets/characters/weapon-heavy.svg",
-  "weapon-launcher": "/assets/characters/weapon-launcher.svg",
-  "weapon-flame": "/assets/characters/weapon-flame.svg",
-  "weapon-emp": "/assets/characters/weapon-emp.svg",
-  "vehicle-heavy-mg": "/assets/vehicles/heavy-mg.svg",
-  "vehicle-rocket-truck": "/assets/vehicles/rocket-truck.svg",
-  "vehicle-tank": "/assets/vehicles/tank.svg",
-  "vehicle-plane": "/assets/vehicles/plane.svg",
-  "vehicle-aa-buggy": "/assets/vehicles/aa-buggy.svg",
-  "vehicle-flame-tank": "/assets/vehicles/flame-tank.svg",
-  "vehicle-artillery-carrier": "/assets/vehicles/artillery-carrier.svg",
-  "vehicle-gunship-plane": "/assets/vehicles/gunship-plane.svg",
-  "vehicle-drone-carrier": "/assets/vehicles/drone-carrier.svg",
-  "vehicle-drone": "/assets/vehicles/drone.svg",
-  "prop-rock": "/assets/props/rock.svg",
-  "prop-sandbag": "/assets/props/sandbag.svg",
-  "prop-house": "/assets/props/house.svg",
-  "prop-wall": "/assets/props/wall.svg",
-  "prop-terrain-patch": "/assets/props/terrain-patch.svg",
-  "effect-heal-cross": "/assets/effects/heal-cross.svg",
-  "effect-pickup-crate": "/assets/effects/pickup-crate.svg",
-  "effect-pickup-skill": "/assets/effects/pickup-skill.svg",
-  "effect-pickup-mine": "/assets/effects/pickup-mine.svg",
-  "effect-pickup-napalm": "/assets/effects/pickup-napalm.svg",
-  "effect-pickup-overdrive": "/assets/effects/pickup-overdrive.svg",
-  "effect-hazard-mine": "/assets/effects/hazard-mine.svg",
-  "effect-hazard-napalm": "/assets/effects/hazard-napalm.svg",
-  "effect-muzzle-flash": "/assets/effects/muzzle-flash.svg",
-  "effect-explosion-burst": "/assets/effects/explosion-burst.svg"
-} as const;
-
-type SpriteTextureKey = keyof typeof SPRITE_ASSET_URLS;
-
-const WEAPON_TEXTURE_KEYS: Record<WeaponRenderKind, SpriteTextureKey> = {
-  knife: "weapon-blade",
-  sword: "weapon-blade",
-  katana: "weapon-blade",
-  mace: "weapon-blunt",
-  hammer: "weapon-blunt",
-  morningstar: "weapon-blunt",
-  chainblade: "weapon-chain",
-  pistol: "weapon-pistol",
-  carbine: "weapon-rifle",
-  shotgun: "weapon-shotgun",
-  flame: "weapon-flame",
-  smg: "weapon-smg",
-  launcher: "weapon-launcher",
-  machinegun: "weapon-heavy",
-  minigun: "weapon-heavy",
-  emp: "weapon-emp",
-  rocket: "weapon-launcher"
-};
-
-const VEHICLE_TEXTURE_KEYS: Record<VehicleTypeId, SpriteTextureKey> = {
-  "heavy-mg": "vehicle-heavy-mg",
-  "rocket-truck": "vehicle-rocket-truck",
-  tank: "vehicle-tank",
-  plane: "vehicle-plane",
-  "aa-buggy": "vehicle-aa-buggy",
-  "flame-tank": "vehicle-flame-tank",
-  "artillery-carrier": "vehicle-artillery-carrier",
-  "gunship-plane": "vehicle-gunship-plane",
-  "drone-carrier": "vehicle-drone-carrier"
-};
-
 const OBSTACLE_TEXTURE_KEYS: Record<string, SpriteTextureKey> = {
   rock: "prop-rock",
   sandbag: "prop-sandbag",
@@ -300,16 +234,6 @@ const HAZARD_TEXTURE_KEYS: Record<SnapshotHazard["kind"], SpriteTextureKey> = {
   napalm: "effect-hazard-napalm"
 };
 
-const WEAPON_TEXTURE_BASE_ANGLES: Partial<Record<SpriteTextureKey, number>> = {
-  "weapon-blade": 90,
-  "weapon-blunt": 90,
-  "weapon-chain": 90
-};
-
-const VEHICLE_TEXTURE_BASE_ANGLES: Partial<Record<VehicleTypeId, number>> = {
-  plane: 90,
-  "gunship-plane": 90
-};
 
 const TERRAIN_PATCHES = [
   { x: 430, y: 336, scale: 0.84, alpha: 0.64 },
@@ -881,7 +805,9 @@ class BattlefieldScene extends Phaser.Scene {
         continue;
       }
 
-      renderProjectile(this.graphics, projectile);
+      if (!renderProjectileSprite(this, this.spriteLayer, projectile)) {
+        renderProjectile(this.graphics, projectile);
+      }
       visibleProjectiles += 1;
       if (visibleProjectiles >= 48) {
         break;
@@ -1030,9 +956,9 @@ function renderVehicleSprite(
 ): boolean {
   const textureKey = VEHICLE_TEXTURE_KEYS[vehicle.type];
   const aim = normalize(vehicle.aimX, vehicle.aimY);
-  const angle = Phaser.Math.RadToDeg(Math.atan2(aim.y, aim.x)) + (VEHICLE_TEXTURE_BASE_ANGLES[vehicle.type] ?? 0);
+  const angle = Phaser.Math.RadToDeg(Math.atan2(aim.y, aim.x)) + getTextureBaseAngle(textureKey);
   const teamTint = vehicle.team === "germany" ? 0xe5d6ad : 0xe3edf6;
-  const bodyScale = Math.max(0.44, vehicle.radius / (vehicle.airborne ? 54 : 44)) * (lowDetail ? 0.92 : 1);
+  const bodyScale = Math.max(0.44, vehicle.radius / (vehicle.airborne ? 54 : 44)) * getTextureScaleMultiplier(textureKey) * (lowDetail ? 0.92 : 1);
 
   if (!stampTexture(scene, layer, "soldier-shadow", vehicle.x, vehicle.y + vehicle.radius * 0.48, {
     scaleX: bodyScale * (vehicle.airborne ? 1.4 : 1.6),
@@ -1095,7 +1021,7 @@ function renderSoldierSprite(
   const teamTint = player.team === "germany" ? mixColor(TEAM_CONFIG.germany.color, 0xffffff, 0.72) : mixColor(TEAM_CONFIG.france.color, 0xffffff, 0.8);
   const bodyScale = (player.activePath === "melee" ? 0.58 : 0.55) * (lowDetail ? 0.92 : 1);
   const bodyAngle = Phaser.Math.RadToDeg(Math.atan2(facing.y, facing.x)) + 90;
-  const weaponAngle = Phaser.Math.RadToDeg(Math.atan2(weaponFacing.y, weaponFacing.x)) + (WEAPON_TEXTURE_BASE_ANGLES[weaponKey] ?? 0);
+  const weaponAngle = Phaser.Math.RadToDeg(Math.atan2(weaponFacing.y, weaponFacing.x)) + getTextureBaseAngle(weaponKey);
 
   stampTexture(scene, layer, shadowKey, player.x, player.y + 12, {
     scaleX: bodyScale * 1.18,
@@ -1164,6 +1090,48 @@ function getClassPreviewUrl(classId: WeaponClassId): string {
   return SPRITE_ASSET_URLS[getWeaponTextureKey(classId)];
 }
 
+function renderProjectileSprite(
+  scene: Phaser.Scene,
+  layer: Phaser.GameObjects.RenderTexture,
+  projectile: SnapshotProjectile
+): boolean {
+  const textureKey = getProjectileTextureKey(projectile.classId);
+  const weaponClass = getWeaponClass(projectile.classId);
+  const angle = Phaser.Math.RadToDeg(Math.atan2(projectile.dirY, projectile.dirX)) + getTextureBaseAngle(textureKey);
+  const tint =
+    weaponClass.impactStyle === "shock"
+      ? 0xbfe8ff
+      : weaponClass.impactStyle === "flame"
+        ? 0xffd090
+        : weaponClass.impactStyle === "explosion"
+          ? 0xffd79b
+          : 0xf9f4de;
+
+  return stampTexture(scene, layer, textureKey, projectile.x, projectile.y, {
+    angle,
+    scale: Math.max(0.16, projectile.radius / 18) * getTextureScaleMultiplier(textureKey),
+    alpha: 0.95,
+    tint
+  });
+}
+
+function getProjectileTextureKey(classId: WeaponClassId): SpriteTextureKey {
+  const weaponClass = getWeaponClass(classId);
+  switch (weaponClass.impactStyle) {
+    case "explosion":
+      return weaponClass.renderKind === "rocket" || weaponClass.renderKind === "launcher" ? "effect-shell-heavy" : "effect-shell-medium";
+    case "flame":
+      return "effect-flame-shot";
+    case "shock":
+      return weaponClass.renderKind === "emp" ? "effect-plasma" : "effect-laser";
+    default:
+      if (weaponClass.renderKind === "machinegun" || weaponClass.renderKind === "minigun" || weaponClass.renderKind === "smg") {
+        return "effect-shell-medium";
+      }
+      return "effect-shell-light";
+  }
+}
+
 function stampTexture(
   scene: Phaser.Scene,
   layer: Phaser.GameObjects.RenderTexture,
@@ -1172,15 +1140,27 @@ function stampTexture(
   y: number,
   config: Phaser.Types.Textures.StampConfig
 ): boolean {
-  if (!hasTexture(scene, key)) {
+  const resolvedKey = resolveLoadedTextureKey(scene, key);
+  if (!resolvedKey) {
     return false;
   }
-  layer.stamp(key, undefined, x, y, config);
+  layer.stamp(resolvedKey, undefined, x, y, config);
   return true;
 }
 
 function hasTexture(scene: Phaser.Scene, key: SpriteTextureKey): boolean {
-  return scene.textures.exists(key);
+  return resolveLoadedTextureKey(scene, key) !== undefined;
+}
+
+function resolveLoadedTextureKey(scene: Phaser.Scene, key: SpriteTextureKey): SpriteTextureKey | undefined {
+  let current: SpriteTextureKey | undefined = key;
+  while (current) {
+    if (scene.textures.exists(current)) {
+      return current;
+    }
+    current = getTextureFallback(current);
+  }
+  return undefined;
 }
 
 const game = new Phaser.Game({
